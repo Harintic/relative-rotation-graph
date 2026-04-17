@@ -1,0 +1,5 @@
+data/
+__pycache__/
+.venv/
+.gui_settings.json
+Output.csv
