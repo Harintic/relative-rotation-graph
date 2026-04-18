@@ -1,9 +1,30 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SettingsModal } from './components/SettingsModal';
+import { RrgChart } from './components/RrgChart';
+import { RrSidePanel } from './components/RrSidePanel';
 import { SetEditorModal, type SetDraft } from './components/SetEditorModal';
 import { api } from './lib/api';
 import { useColumnWidths } from './lib/useColumnWidths';
-import type { ApiMeta, AppSettings, DataSet, LogEntry, SearchResult, SetSyncResult } from './lib/types';
+import type { ApiMeta, AppSettings, DataSet, LogEntry, RrResponse, SearchResult, SetSyncResult } from './lib/types';
+
+type Bounds = { minX: number; maxX: number; minY: number; maxY: number };
+
+function parseBounds(value: string): Bounds | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as Partial<Bounds>;
+    if ([parsed.minX, parsed.maxX, parsed.minY, parsed.maxY].every((item) => typeof item === 'number')) {
+      return parsed as Bounds;
+    }
+  } catch {
+    // ignore parse failures
+  }
+  return null;
+}
+
+function serializeBounds(bounds: Bounds | null): string {
+  return bounds ? JSON.stringify(bounds) : '';
+}
 
 const defaultSettings: AppSettings = {
   search: '',
@@ -19,6 +40,18 @@ const defaultSettings: AppSettings = {
   selectedSourceExchange: '',
   selectedBaseSymbol: '',
   selectedContractSymbol: '',
+  rr_selected_set_id: '',
+  rr_benchmark_asset_id: '',
+  rr_lookback_days: '10',
+  rr_anchor_date: '',
+  rr_missing_mode: 'skip',
+  rr_latest_point_size: '6',
+  rr_other_point_size: '3',
+  rr_included_asset_ids: null,
+  rr_panel_open: false,
+  rr_highlighted_asset_id: '',
+  rr_fixed_graph: false,
+  rr_fixed_bounds: '',
 };
 
 export default function App() {
@@ -28,7 +61,7 @@ export default function App() {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [status, setStatus] = useState('Ready');
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'download' | 'sets' | 'logs'>('download');
+  const [activeTab, setActiveTab] = useState<'download' | 'sets' | 'rr' | 'logs'>('download');
   const [resolvedText, setResolvedText] = useState('Select a row to resolve the download symbol.');
   const [sets, setSets] = useState<DataSet[]>([]);
   const [selectedSetId, setSelectedSetId] = useState<string | null>(null);
@@ -39,6 +72,23 @@ export default function App() {
   const [syncingSet, setSyncingSet] = useState<{ setId: string; action: 'download' | 'update' | 'retry-failed' } | null>(null);
   const [retryingAssetIds, setRetryingAssetIds] = useState<string[]>([]);
   const [setsStatus, setSetsStatus] = useState('');
+  const [rrSelectedSetId, setRrSelectedSetId] = useState('');
+  const [rrBenchmarkAssetId, setRrBenchmarkAssetId] = useState('');
+  const [rrLookbackDays, setRrLookbackDays] = useState('10');
+  const [rrAnchorDate, setRrAnchorDate] = useState('');
+  const [rrMissingMode, setRrMissingMode] = useState<'skip' | 'ffill'>('skip');
+  const [rrLatestPointSize, setRrLatestPointSize] = useState('6');
+  const [rrOtherPointSize, setRrOtherPointSize] = useState('3');
+  const [rrIncludedAssetIds, setRrIncludedAssetIds] = useState<string[] | null>(null);
+  const [rrPanelOpen, setRrPanelOpen] = useState(false);
+  const [rrFixedGraph, setRrFixedGraph] = useState(false);
+  const [rrVisibleBounds, setRrVisibleBounds] = useState<Bounds | null>(null);
+  const [rrFixedBounds, setRrFixedBounds] = useState<Bounds | null>(null);
+  const [rrHoveredAssetId, setRrHoveredAssetId] = useState('');
+  const [rrHighlightedAssetId, setRrHighlightedAssetId] = useState('');
+  const [rrLoading, setRrLoading] = useState(false);
+  const [rrStatus, setRrStatus] = useState('');
+  const [rrResult, setRrResult] = useState<RrResponse | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [logsCursor, setLogsCursor] = useState(0);
   const [logsPaused, setLogsPaused] = useState(false);
@@ -46,6 +96,7 @@ export default function App() {
   const [backendMeta, setBackendMeta] = useState<ApiMeta | null>(null);
   const [backendMetaError, setBackendMetaError] = useState('');
   const searchRequestId = useRef(0);
+  const rrPreviousSetId = useRef('');
   const logViewRef = useRef<HTMLDivElement>(null);
   const logsCursorRef = useRef(0);
   const summaryColumns = useColumnWidths('rrg.set-summary-widths', [10, 10, 9, 9, 12, 17, 33]);
@@ -67,6 +118,7 @@ export default function App() {
         name: record.name,
         interval: record.interval,
         bars: record.bars || settings.bars || '5000',
+        benchmark_asset_id: record.benchmark_asset_id || record.assets[0]?.id || '',
         assets: record.assets.map((asset) => ({ ...asset })),
       });
     }
@@ -92,12 +144,49 @@ export default function App() {
     }));
   }
 
+  function saveAppSettings(next: AppSettings) {
+    setSettings(next);
+    void api.saveSettings(next);
+  }
+
+  function updateRrSettings(partial: Partial<AppSettings>) {
+    saveAppSettings({ ...settings, ...partial });
+  }
+
   useEffect(() => {
     void (async () => {
       const remote = await api.loadSettings();
       setSettings((current) => ({ ...current, ...remote }));
     })();
   }, []);
+
+  useEffect(() => {
+    setRrSelectedSetId(settings.rr_selected_set_id || '');
+    setRrBenchmarkAssetId(settings.rr_benchmark_asset_id || '');
+    setRrLookbackDays(settings.rr_lookback_days || '10');
+    setRrAnchorDate(settings.rr_anchor_date || '');
+    setRrMissingMode(settings.rr_missing_mode || 'skip');
+    setRrLatestPointSize(settings.rr_latest_point_size || '6');
+    setRrOtherPointSize(settings.rr_other_point_size || '3');
+    setRrIncludedAssetIds(settings.rr_included_asset_ids ?? null);
+    setRrPanelOpen(settings.rr_panel_open ?? false);
+    setRrHighlightedAssetId(settings.rr_highlighted_asset_id || '');
+    setRrFixedGraph(settings.rr_fixed_graph ?? false);
+    setRrFixedBounds(parseBounds(settings.rr_fixed_bounds || ''));
+  }, [
+    settings.rr_selected_set_id,
+    settings.rr_benchmark_asset_id,
+    settings.rr_lookback_days,
+    settings.rr_anchor_date,
+    settings.rr_missing_mode,
+    settings.rr_latest_point_size,
+    settings.rr_other_point_size,
+    settings.rr_included_asset_ids,
+    settings.rr_panel_open,
+    settings.rr_highlighted_asset_id,
+    settings.rr_fixed_graph,
+    settings.rr_fixed_bounds,
+  ]);
 
   useEffect(() => {
     void (async () => {
@@ -131,6 +220,51 @@ export default function App() {
       setSelectedSetId(sets[0]?.id ?? null);
     }
   }, [sets, selectedSetId]);
+
+  useEffect(() => {
+    if (!rrSelectedSetId && sets.length) {
+      setRrSelectedSetId(sets[0].id);
+      updateRrSettings({ rr_selected_set_id: sets[0].id });
+    }
+    if (rrSelectedSetId && !sets.some((item) => item.id === rrSelectedSetId)) {
+      const fallbackSetId = sets[0]?.id ?? '';
+      setRrSelectedSetId(fallbackSetId);
+      setRrResult(null);
+      setRrStatus('');
+      setRrBenchmarkAssetId('');
+      setRrAnchorDate('');
+      updateRrSettings({ rr_selected_set_id: fallbackSetId, rr_benchmark_asset_id: '' });
+    }
+  }, [sets, rrSelectedSetId]);
+
+  useEffect(() => {
+    const currentSet = sets.find((item) => item.id === rrSelectedSetId) ?? null;
+    if (!currentSet) {
+      setRrBenchmarkAssetId('');
+      setRrIncludedAssetIds(null);
+      rrPreviousSetId.current = rrSelectedSetId;
+      return;
+    }
+
+    if (rrPreviousSetId.current !== rrSelectedSetId) {
+      setRrIncludedAssetIds(null);
+      setRrAnchorDate('');
+      rrPreviousSetId.current = rrSelectedSetId;
+    }
+
+    const validIds = new Set(currentSet.assets.map((asset) => asset.id).filter((id): id is string => Boolean(id)));
+    const fallback = currentSet.benchmark_asset_id || currentSet.assets[0]?.id || '';
+    if (!rrBenchmarkAssetId || !validIds.has(rrBenchmarkAssetId)) {
+      setRrBenchmarkAssetId(fallback);
+      updateRrSettings({ rr_benchmark_asset_id: fallback });
+    }
+    if (rrIncludedAssetIds !== null) {
+      const next = rrIncludedAssetIds.filter((id) => validIds.has(id) && id !== rrBenchmarkAssetId);
+      if (next.length !== rrIncludedAssetIds.length) {
+        setRrIncludedAssetIds(next);
+      }
+    }
+  }, [sets, rrSelectedSetId, rrBenchmarkAssetId, rrIncludedAssetIds]);
 
   useEffect(() => {
     let cancelled = false;
@@ -224,6 +358,186 @@ export default function App() {
   }, [results, selectedIndex]);
 
   const selectedSet = useMemo(() => sets.find((item) => item.id === selectedSetId) ?? null, [sets, selectedSetId]);
+  const rrSelectedSet = useMemo(() => sets.find((item) => item.id === rrSelectedSetId) ?? null, [sets, rrSelectedSetId]);
+  const rrBenchmarkAsset = useMemo(
+    () => rrSelectedSet?.assets.find((asset) => asset.id === rrBenchmarkAssetId) ?? rrSelectedSet?.assets[0] ?? null,
+    [rrSelectedSet, rrBenchmarkAssetId],
+  );
+  const rrPlottedAssetIds = useMemo(() => {
+    const benchmarkId = rrBenchmarkAssetId || rrSelectedSet?.benchmark_asset_id || rrSelectedSet?.assets[0]?.id || '';
+    const validIds = new Set(rrSelectedSet?.assets.map((asset) => asset.id).filter((id): id is string => Boolean(id) && id !== benchmarkId) ?? []);
+    if (rrIncludedAssetIds === null) return [...validIds];
+    return rrIncludedAssetIds.filter((id) => validIds.has(id) && id !== benchmarkId);
+  }, [rrIncludedAssetIds, rrSelectedSet, rrBenchmarkAssetId]);
+  const rrBenchmarkDateKeys = useMemo(() => rrResult?.benchmark_dates.map((date) => date.slice(0, 10)) ?? [], [rrResult]);
+  const rrResolvedAnchorDate = useMemo(() => {
+    if (!rrBenchmarkDateKeys.length) return '';
+    const targetKey = (rrAnchorDate || rrBenchmarkDateKeys[rrBenchmarkDateKeys.length - 1]).slice(0, 10);
+    let resolved = rrBenchmarkDateKeys[0];
+    for (const dateKey of rrBenchmarkDateKeys) {
+      if (dateKey <= targetKey) {
+        resolved = dateKey;
+      } else {
+        break;
+      }
+    }
+    return resolved;
+  }, [rrAnchorDate, rrBenchmarkDateKeys]);
+  const rrDisplayAnchorDate = rrResolvedAnchorDate || rrAnchorDate || rrBenchmarkDateKeys[rrBenchmarkDateKeys.length - 1] || '';
+  const rrVisibleResult = useMemo(() => {
+    if (!rrResult) return null;
+    const benchmarkDates = rrBenchmarkDateKeys;
+    const lookback = Math.max(1, Number(rrLookbackDays) || rrResult.lookback_days || 10);
+    const anchorIndex = benchmarkDates.indexOf(rrResolvedAnchorDate || benchmarkDates[benchmarkDates.length - 1] || '');
+    const endIndex = anchorIndex >= 0 ? anchorIndex : benchmarkDates.length - 1;
+    const startIndex = Math.max(0, endIndex - lookback + 1);
+    const windowDates = benchmarkDates.slice(startIndex, endIndex + 1);
+    const included = rrIncludedAssetIds === null ? null : new Set(rrPlottedAssetIds);
+    return {
+      ...rrResult,
+      benchmark_dates: windowDates,
+      series: rrResult.series
+        .filter((series) => (included ? included.has(series.asset_id) : true))
+        .map((series) => {
+          const tail = series.tail.filter((point) => windowDates.includes(point.date.slice(0, 10)));
+          return {
+            ...series,
+            tail,
+            latest: tail.length ? tail[tail.length - 1] : null,
+          };
+        })
+        .filter((series) => series.tail.length > 0),
+    };
+  }, [rrResult, rrBenchmarkDateKeys, rrResolvedAnchorDate, rrIncludedAssetIds, rrPlottedAssetIds, rrLookbackDays]);
+  const rrChartSeriesIds = useMemo(() => rrResult?.series.map((series) => series.asset_id) ?? [], [rrResult]);
+  const rrLegendAssets = useMemo(() => {
+    const selected = rrSelectedSet?.assets ?? [];
+    const benchmarkId = rrBenchmarkAssetId || rrSelectedSet?.benchmark_asset_id || rrSelectedSet?.assets[0]?.id || '';
+    return selected
+      .filter((asset): asset is (typeof asset & { id: string }) => Boolean(asset.id))
+      .map((asset) => ({
+        id: asset.id,
+        label: asset.symbol || asset.selectedBaseSymbol || asset.selectedContractSymbol || 'Asset',
+        visible: asset.id === benchmarkId || rrIncludedAssetIds === null || rrIncludedAssetIds.includes(asset.id),
+        latest: rrResult?.series.find((series) => series.asset_id === asset.id)?.latest ?? null,
+      }))
+      ;
+  }, [rrSelectedSet, rrBenchmarkAssetId, rrIncludedAssetIds]);
+
+  const rrActiveAssetId = rrHoveredAssetId || rrHighlightedAssetId;
+
+  const handleRrViewBoundsChange = useCallback((bounds: Bounds) => {
+    setRrVisibleBounds((current) => {
+      if (
+        current &&
+        current.minX === bounds.minX &&
+        current.maxX === bounds.maxX &&
+        current.minY === bounds.minY &&
+        current.maxY === bounds.maxY
+      ) {
+        return current;
+      }
+      return bounds;
+    });
+  }, []);
+
+  function toggleRrAsset(assetId: string) {
+    const benchmarkId = rrBenchmarkAssetId || rrSelectedSet?.benchmark_asset_id || rrSelectedSet?.assets[0]?.id || '';
+    if (assetId === benchmarkId) return;
+
+    const allNonBenchmark = rrSelectedSet?.assets.map((asset) => asset.id).filter((id): id is string => Boolean(id) && id !== benchmarkId) ?? [];
+    const next = (() => {
+      const current = rrIncludedAssetIds;
+      if (current === null) {
+        return allNonBenchmark.filter((id) => id !== assetId);
+      }
+      return current.includes(assetId) ? current.filter((id) => id !== assetId) : [...current, assetId];
+    })();
+    setRrIncludedAssetIds(next);
+    updateRrSettings({ rr_included_asset_ids: next });
+  }
+
+  function showAllRrAssets() {
+    setRrIncludedAssetIds(null);
+    updateRrSettings({ rr_included_asset_ids: null });
+  }
+
+  function hideAllRrAssets() {
+    setRrIncludedAssetIds([]);
+    updateRrSettings({ rr_included_asset_ids: [] });
+  }
+
+  function toggleFixedGraph(enabled: boolean) {
+    const nextBounds = enabled ? rrVisibleBounds || rrFixedBounds : rrFixedBounds;
+    setRrFixedGraph(enabled);
+    updateRrSettings({ rr_fixed_graph: enabled, rr_fixed_bounds: serializeBounds(nextBounds) });
+    if (enabled && nextBounds) {
+      setRrFixedBounds(nextBounds);
+    }
+  }
+
+  useEffect(() => {
+    if (!rrFixedGraph || rrFixedBounds || !rrVisibleBounds) return;
+    setRrFixedBounds(rrVisibleBounds);
+    updateRrSettings({ rr_fixed_bounds: serializeBounds(rrVisibleBounds) });
+  }, [rrFixedGraph, rrFixedBounds, rrVisibleBounds]);
+
+  function toggleRrHighlight(assetId: string) {
+    setRrHighlightedAssetId((current) => {
+      const next = current === assetId ? '' : assetId;
+      updateRrSettings({ rr_highlighted_asset_id: next });
+      return next;
+    });
+  }
+
+  function stepRrAnchor(delta: number) {
+    if (!rrBenchmarkDateKeys.length) return;
+    const current = rrDisplayAnchorDate || rrBenchmarkDateKeys[rrBenchmarkDateKeys.length - 1];
+    const index = rrBenchmarkDateKeys.indexOf(current);
+    const fallbackIndex = rrBenchmarkDateKeys.length - 1;
+    const nextIndex = Math.max(0, Math.min(rrBenchmarkDateKeys.length - 1, (index >= 0 ? index : fallbackIndex) + delta));
+    const nextDate = rrBenchmarkDateKeys[nextIndex];
+    setRrAnchorDate(nextDate);
+    updateRrSettings({ rr_anchor_date: nextDate });
+  }
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (activeTab !== 'rr') return;
+
+      const target = event.target as HTMLElement | null;
+      if (target) {
+        const tagName = target.tagName.toLowerCase();
+        if (tagName === 'input' || tagName === 'textarea' || tagName === 'select' || target.isContentEditable) {
+          return;
+        }
+      }
+
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        stepRrAnchor(-1);
+      }
+
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        stepRrAnchor(1);
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeTab, rrBenchmarkDateKeys, rrDisplayAnchorDate]);
+
+  useEffect(() => {
+    if (!rrBenchmarkDateKeys.length) {
+      setRrAnchorDate('');
+      return;
+    }
+
+    if (!rrAnchorDate) {
+      setRrAnchorDate(rrBenchmarkDateKeys[rrBenchmarkDateKeys.length - 1]);
+    }
+  }, [rrAnchorDate, rrBenchmarkDateKeys]);
 
   async function download() {
     if (!settings.symbol.trim()) {
@@ -271,20 +585,20 @@ export default function App() {
       selectedSourceExchange,
       selectedContractSymbol: preferredContract,
     }));
-    if (selectedBaseSymbol && selectedSourceExchange && preferredContract) {
+    if (selectedBaseSymbol && selectedSourceExchange) {
       try {
         const resolved = await api.resolve(selectedBaseSymbol, selectedSourceExchange, preferredContract);
         setResolvedText(resolved.resolved);
       } catch {
-        setResolvedText('Select a valid contract to resolve the download symbol.');
+        setResolvedText('Resolve failed. Check the selected symbol.');
       }
     } else {
-      setResolvedText('Select a valid contract to resolve the download symbol.');
+      setResolvedText('Select a symbol to resolve the download symbol.');
     }
   }
 
   function openNewSet() {
-    setSetDraft({ name: '', interval: settings.interval || 'Daily', bars: settings.bars || '5000', assets: [] });
+    setSetDraft({ name: '', interval: settings.interval || 'Daily', bars: settings.bars || '5000', benchmark_asset_id: '', assets: [] });
     setSetEditorOpen(true);
   }
 
@@ -294,6 +608,7 @@ export default function App() {
       name: item.name,
       interval: item.interval,
       bars: item.bars || settings.bars || '5000',
+      benchmark_asset_id: item.benchmark_asset_id || item.assets[0]?.id || '',
       assets: item.assets.map((asset) => ({ ...asset })),
     });
     setSetEditorOpen(true);
@@ -304,6 +619,7 @@ export default function App() {
       name: draft.name.trim(),
       interval: draft.interval.trim() || 'Daily',
       bars: draft.bars.trim() || '5000',
+      benchmark_asset_id: draft.benchmark_asset_id || draft.assets[0]?.id || '',
       assets: draft.assets.map((asset) => ({ ...asset })),
     };
 
@@ -340,6 +656,20 @@ export default function App() {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Delete failed';
       setStatus(`Delete failed: ${message}`);
+    }
+  }
+
+  async function duplicateSet(id: string) {
+    try {
+      setSetsStatus('Duplicating set...');
+      const duplicate = await api.duplicateSet(id);
+      const response = await api.listSets();
+      setSets(response.sets);
+      setSelectedSetId(duplicate.set.id);
+      setSetsStatus('Set duplicated.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Duplicate failed';
+      setSetsStatus(`Set duplicate failed: ${message}`);
     }
   }
 
@@ -389,6 +719,31 @@ export default function App() {
     setLogsStatus('Cleared');
   }
 
+  async function createRrg() {
+    if (!rrSelectedSetId) {
+      setRrStatus('Select a set first.');
+      return;
+    }
+    try {
+      setRrLoading(true);
+      setRrStatus('Creating relative rotation graph...');
+      const response = await api.createRrg(rrSelectedSetId, {
+        benchmarkAssetId: rrBenchmarkAssetId,
+        lookbackDays: Number(rrLookbackDays) || 10,
+        includedAssetIds: rrSelectedSet?.assets.map((asset) => asset.id).filter((id): id is string => Boolean(id)) ?? [],
+        missingMode: rrMissingMode,
+      });
+      setRrResult(response);
+      setRrStatus(`Chart created for ${response.set.name}. Benchmark: ${response.benchmark_label}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Create failed';
+      setRrStatus(`Create failed: ${message}`);
+      setRrResult(null);
+    } finally {
+      setRrLoading(false);
+    }
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -403,6 +758,9 @@ export default function App() {
             </button>
             <button className={activeTab === 'sets' ? 'selected' : ''} onClick={() => setActiveTab('sets')}>
               Sets
+            </button>
+            <button className={activeTab === 'rr' ? 'selected' : ''} onClick={() => setActiveTab('rr')}>
+              RR
             </button>
             <button className={activeTab === 'logs' ? 'selected' : ''} onClick={() => setActiveTab('logs')}>
               Logs
@@ -523,11 +881,17 @@ export default function App() {
                   <div className="set-details-header">
                     <div>
                       <h3>{selectedSet.name}</h3>
-                      <p>{selectedSet.interval} · bars {selectedSet.bars || settings.bars || '5000'} · folder `Output/{selectedSet.folder_name}`</p>
+                      <p>
+                        {selectedSet.interval} · bars {selectedSet.bars || settings.bars || '5000'} · benchmark{' '}
+                        {selectedSet.assets.find((asset) => asset.id === selectedSet.benchmark_asset_id)?.symbol || selectedSet.assets[0]?.symbol || '-'} · folder `Output/{selectedSet.folder_name}`
+                      </p>
                     </div>
                     <div className="set-actions">
                       <button disabled={!!syncingSet && syncingSet.setId === selectedSet.id} onClick={() => openEditSet(selectedSet)}>
                         Edit
+                      </button>
+                      <button disabled={!!syncingSet && syncingSet.setId === selectedSet.id} onClick={() => void duplicateSet(selectedSet.id)}>
+                        Duplicate
                       </button>
                       <button disabled={!!syncingSet && syncingSet.setId === selectedSet.id} onClick={() => void removeSet(selectedSet.id)}>
                         Delete
@@ -682,6 +1046,154 @@ export default function App() {
         </section>
       ) : null}
 
+      {activeTab === 'rr' ? (
+        <section className="panel rr-panel">
+          <div className="panel-head">
+            <div>
+              <div className="panel-title">RElaative rotation grab</div>
+              <div className="rr-subtitle">Pick a set, choose benchmark and asset filters, then build from stored CSVs.</div>
+            </div>
+            <div className="set-actions">
+                <button
+                  onClick={() => {
+                    setRrPanelOpen((current) => {
+                      updateRrSettings({ rr_panel_open: !current });
+                      return !current;
+                    });
+                  }}
+                  disabled={!rrSelectedSetId}
+                >
+                  Settings
+                </button>
+              <button onClick={() => void createRrg()} disabled={rrLoading || !rrSelectedSetId}>
+                {rrLoading ? 'Creating...' : 'Create'}
+              </button>
+            </div>
+          </div>
+
+          <div className="rr-workspace">
+            <section className="panel rr-chart-panel">
+              <div className="rr-chart-shell">
+                <button
+                  className="rr-drawer-handle"
+                  onClick={() => {
+                    setRrPanelOpen((current) => {
+                      updateRrSettings({ rr_panel_open: !current });
+                      return !current;
+                    });
+                  }}
+                  aria-label="Toggle RR settings panel"
+                >
+                  {rrPanelOpen ? '▸' : '◂'}
+                </button>
+                <RrgChart
+                  value={rrVisibleResult}
+                  allSeriesIds={rrChartSeriesIds}
+                  legendAssets={rrLegendAssets}
+                  activeAssetId={rrActiveAssetId}
+                  highlightedAssetId={rrHighlightedAssetId}
+                  onAssetHover={(assetId) => setRrHoveredAssetId(assetId)}
+                  onAssetHoverEnd={() => setRrHoveredAssetId('')}
+                  onAssetToggle={toggleRrAsset}
+                  onAssetClick={toggleRrHighlight}
+                  onSelectAll={showAllRrAssets}
+                  onHideAll={hideAllRrAssets}
+                  fixedGraph={rrFixedGraph}
+                  fixedBounds={rrFixedGraph ? rrFixedBounds : null}
+                  onViewBoundsChange={handleRrViewBoundsChange}
+                  latestPointSize={Number(rrLatestPointSize) || 6}
+                  otherPointSize={Number(rrOtherPointSize) || 3}
+                />
+              </div>
+            </section>
+
+            <aside className={`rr-side-drawer ${rrPanelOpen ? 'open' : ''}`}>
+              <div className="rr-side-drawer-scroll">
+                <label>
+                  Set
+                  <select
+                    value={rrSelectedSetId}
+                    onChange={(e) => {
+                      setRrSelectedSetId(e.target.value);
+                      setRrPanelOpen(true);
+                      updateRrSettings({ rr_selected_set_id: e.target.value, rr_panel_open: true });
+                    }}
+                  >
+                    <option value="">Select a set</option>
+                    {sets.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="rr-meta">
+                  <div>{rrSelectedSet ? `Benchmark: ${rrBenchmarkAsset?.symbol || rrBenchmarkAsset?.selectedBaseSymbol || rrBenchmarkAsset?.selectedContractSymbol || '-'}` : 'Benchmark: -'}</div>
+                  <div>
+                    {rrLookbackDays || '10'} trading days · {rrMissingMode === 'skip' ? 'skip missing' : 'forward-fill'} · {rrPlottedAssetIds.length} plotted
+                  </div>
+                  <div>{rrStatus || 'Ready'}</div>
+                </div>
+
+                <RrSidePanel
+                  lookbackDays={rrLookbackDays}
+                  missingMode={rrMissingMode}
+                  fixedGraph={rrFixedGraph}
+                  onLookbackDaysChange={(value: string) => {
+                    setRrLookbackDays(value);
+                    updateRrSettings({ rr_lookback_days: value });
+                  }}
+                  onMissingModeChange={(value: 'skip' | 'ffill') => {
+                    setRrMissingMode(value);
+                    updateRrSettings({ rr_missing_mode: value });
+                  }}
+                  latestPointSize={rrLatestPointSize}
+                  otherPointSize={rrOtherPointSize}
+                  onLatestPointSizeChange={(value: string) => {
+                    setRrLatestPointSize(value);
+                    updateRrSettings({ rr_latest_point_size: value });
+                  }}
+                  onOtherPointSizeChange={(value: string) => {
+                    setRrOtherPointSize(value);
+                    updateRrSettings({ rr_other_point_size: value });
+                  }}
+                  onFixedGraphChange={(value: boolean) => toggleFixedGraph(value)}
+                />
+              </div>
+            </aside>
+          </div>
+
+          <div className="rr-chart-footer panel">
+            <div className="rr-chart-footer-grid">
+              <label>
+                Last date
+                <div className="rr-anchor-row">
+                  <button type="button" className="secondary-button rr-anchor-step" onClick={() => stepRrAnchor(-1)} disabled={!rrBenchmarkDateKeys.length}>
+                    ◀
+                  </button>
+                  <input
+                    type="date"
+                    value={rrDisplayAnchorDate}
+                    onChange={(e) => {
+                      setRrAnchorDate(e.target.value);
+                      updateRrSettings({ rr_anchor_date: e.target.value });
+                    }}
+                  />
+                  <button type="button" className="secondary-button rr-anchor-step" onClick={() => stepRrAnchor(1)} disabled={!rrBenchmarkDateKeys.length}>
+                    ▶
+                  </button>
+                </div>
+              </label>
+            </div>
+            <div className="rr-chart-footer-note">
+              <div>Using: {rrDisplayAnchorDate || '-'}</div>
+              <div>{rrLookbackDays || '10'} trading days ending at the selected date.</div>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       {activeTab === 'logs' ? (
         <section className="panel logs-panel">
           <div className="panel-head">
@@ -714,8 +1226,7 @@ export default function App() {
           value={settings}
           onClose={() => setSettingsOpen(false)}
           onSave={(next) => {
-            setSettings(next);
-            void api.saveSettings(next);
+            saveAppSettings({ ...settings, ...next });
             setSettingsOpen(false);
           }}
         />
@@ -734,7 +1245,6 @@ export default function App() {
         />
       ) : null}
 
-      {activeTab === 'download' ? <footer className="footer">{selectedResult ? `Selected: ${selectedResult.symbol} | ${resolvedText}` : resolvedText}</footer> : null}
     </div>
   );
 }

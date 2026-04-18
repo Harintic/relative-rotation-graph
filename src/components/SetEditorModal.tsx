@@ -8,6 +8,7 @@ export type SetDraft = {
   name: string;
   interval: string;
   bars: string;
+  benchmark_asset_id: string;
   assets: SetAsset[];
 };
 
@@ -63,6 +64,15 @@ function createBlankAsset(): SetAsset {
   };
 }
 
+function assetLabel(asset: SetAsset) {
+  const symbol = asset.symbol || asset.selectedBaseSymbol || asset.selectedContractSymbol || 'Asset';
+  const contract = asset.selectedContractSymbol || '-';
+  const exchange = asset.selectedSourceExchange || asset.exchange || '-';
+  return `${symbol} · ${contract} · ${exchange}`;
+}
+
+const intervalOptions = ['1 min', '5 min', '15 min', '30 min', '1 hour', '4 hour', 'Daily', 'Weekly', 'Monthly'];
+
 export function SetEditorModal({ value, onClose, onSave }: Props) {
   const [draft, setDraft] = useState<SetDraft>(value);
   const [search, setSearch] = useState('');
@@ -106,6 +116,18 @@ export function SetEditorModal({ value, onClose, onSave }: Props) {
   }, [search, exchange]);
 
   const duplicateKeys = useMemo(() => new Set(draft.assets.map(assetKey)), [draft.assets]);
+  const benchmarkOptions = useMemo(() => draft.assets.map((asset) => ({ id: asset.id || '', label: assetLabel(asset) })), [draft.assets]);
+  const intervalValue = intervalOptions.includes(draft.interval) ? draft.interval : draft.interval || 'Daily';
+
+  useEffect(() => {
+    if (!draft.assets.length) return;
+    const validIds = new Set(draft.assets.map((asset) => asset.id).filter((id): id is string => Boolean(id)));
+    if (draft.benchmark_asset_id && validIds.has(draft.benchmark_asset_id)) return;
+    const fallback = draft.assets[0]?.id || '';
+    if (fallback && fallback !== draft.benchmark_asset_id) {
+      setDraft((current) => ({ ...current, benchmark_asset_id: fallback }));
+    }
+  }, [draft.assets, draft.benchmark_asset_id]);
 
   function addResult(result: SearchResult) {
     const asset = resultToAsset(result, search.trim(), exchange.trim());
@@ -114,6 +136,7 @@ export function SetEditorModal({ value, onClose, onSave }: Props) {
     setDraft((current) => ({
       ...current,
       assets: [...current.assets, asset],
+      benchmark_asset_id: current.benchmark_asset_id || asset.id || '',
     }));
   }
 
@@ -158,7 +181,14 @@ export function SetEditorModal({ value, onClose, onSave }: Props) {
           file_name: fileName,
         };
       });
-      await onSave({ ...draft, name: trimmedName, interval: trimmedInterval, bars: String(Math.floor(barsValue)), assets });
+      await onSave({
+        ...draft,
+        name: trimmedName,
+        interval: trimmedInterval,
+        bars: String(Math.floor(barsValue)),
+        benchmark_asset_id: draft.benchmark_asset_id || draft.assets[0]?.id || '',
+        assets,
+      });
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : 'Save failed');
     } finally {
@@ -182,11 +212,29 @@ export function SetEditorModal({ value, onClose, onSave }: Props) {
             </label>
             <label>
               Interval
-              <input value={draft.interval} onChange={(e) => setDraft({ ...draft, interval: e.target.value })} />
+              <select value={intervalValue} onChange={(e) => setDraft({ ...draft, interval: e.target.value })}>
+                {!intervalOptions.includes(draft.interval) && draft.interval ? <option value={draft.interval}>{draft.interval} (Custom)</option> : null}
+                {intervalOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               Bars
               <input type="number" min="1" step="1" value={draft.bars} onChange={(e) => setDraft({ ...draft, bars: e.target.value })} />
+            </label>
+            <label>
+              Benchmark
+              <select value={draft.benchmark_asset_id || ''} onChange={(e) => setDraft({ ...draft, benchmark_asset_id: e.target.value })} disabled={!benchmarkOptions.length}>
+                <option value="">{benchmarkOptions.length ? 'Select benchmark' : 'Add assets first'}</option>
+                {benchmarkOptions.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
 

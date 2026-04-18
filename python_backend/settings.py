@@ -23,6 +23,18 @@ def default_settings() -> dict:
         "selected_source_exchange": "",
         "selected_base_symbol": "",
         "selected_contract_symbol": "",
+        "rr_selected_set_id": "",
+        "rr_benchmark_asset_id": "",
+        "rr_lookback_days": "10",
+        "rr_anchor_date": "",
+        "rr_missing_mode": "skip",
+        "rr_latest_point_size": "6",
+        "rr_other_point_size": "3",
+        "rr_included_asset_ids": None,
+        "rr_panel_open": False,
+        "rr_highlighted_asset_id": "",
+        "rr_fixed_graph": False,
+        "rr_fixed_bounds": "",
     }
 
 

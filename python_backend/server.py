@@ -13,12 +13,13 @@ from python_backend.core import (
     search_symbols,
 )
 from python_backend.log_bus import clear_logs, emit_terminal_line, get_logs_since, install_stdio_tee
-from python_backend.sets import create_set, delete_set, list_sets, retry_failed_set, sync_set, update_set
+from python_backend.rrg import create_rrg
+from python_backend.sets import create_set, delete_set, duplicate_set, list_sets, retry_failed_set, sync_set, update_set
 from python_backend.settings import load_settings, save_settings
 
 
 API_VERSION = "2026-04-18-1"
-API_FEATURES = {"retry_failed": True, "logs": True, "sets": True}
+API_FEATURES = {"retry_failed": True, "logs": True, "sets": True, "rrg": True}
 
 
 def _json_response(handler: BaseHTTPRequestHandler, status: int, payload: dict) -> None:
@@ -156,6 +157,11 @@ class ApiHandler(BaseHTTPRequestHandler):
                 _json_response(self, 200, {"set": record})
                 return
 
+            if len(parts) == 4 and parts[0] == "api" and parts[1] == "sets" and parts[3] == "duplicate":
+                record = duplicate_set(parts[2])
+                _json_response(self, 200, {"set": record})
+                return
+
             if len(parts) == 4 and parts[0] == "api" and parts[1] == "sets" and parts[3] in {"download", "update", "retry-failed"}:
                 emit_terminal_line("INFO", "sets", f"api {parts[3]} request set_id={parts[2]}")
                 if parts[3] == "retry-failed":
@@ -163,6 +169,25 @@ class ApiHandler(BaseHTTPRequestHandler):
                     result = retry_failed_set(parts[2], retry_ids if isinstance(retry_ids, list) else None)
                 else:
                     result = sync_set(parts[2], action=parts[3])
+                _json_response(self, 200, result)
+                return
+
+            if path == "/api/rrg":
+                set_id = str(payload.get("set_id") or "").strip()
+                if not set_id:
+                    raise ValueError("set_id is required")
+                benchmark_asset_id = str(payload.get("benchmark_asset_id") or "").strip() or None
+                lookback_days = int(payload.get("lookback_days") or 10)
+                included_asset_ids = payload.get("included_asset_ids") or []
+                missing_mode = str(payload.get("missing_mode") or "skip").strip() or "skip"
+                emit_terminal_line("INFO", "rrg", f"create request set_id={set_id}")
+                result = create_rrg(
+                    set_id,
+                    benchmark_asset_id=benchmark_asset_id,
+                    lookback_days=lookback_days,
+                    included_asset_ids=included_asset_ids if isinstance(included_asset_ids, list) else None,
+                    missing_mode=missing_mode,
+                )
                 _json_response(self, 200, result)
                 return
 

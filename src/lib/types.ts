@@ -34,6 +34,7 @@ export type DataSet = {
   name: string;
   interval: string;
   bars?: string;
+  benchmark_asset_id?: string;
   folder_name: string;
   assets: SetAsset[];
   created_at?: string;
@@ -78,6 +79,32 @@ export type ApiMeta = {
   };
 };
 
+export type RrPoint = {
+  date: string;
+  x: number;
+  y: number;
+};
+
+export type RrSeries = {
+  asset_id: string;
+  symbol: string;
+  exchange: string;
+  latest: RrPoint | null;
+  tail: RrPoint[];
+};
+
+export type RrResponse = {
+  set: DataSet;
+  benchmark_asset_id: string;
+  benchmark_label: string;
+  lookback_days: number;
+  interval: string;
+  missing_mode: 'skip' | 'ffill';
+  benchmark_dates: string[];
+  included_asset_ids: string[];
+  series: RrSeries[];
+};
+
 export type AppSettings = {
   search: string;
   exchange: string;
@@ -92,4 +119,16 @@ export type AppSettings = {
   selectedSourceExchange: string;
   selectedBaseSymbol: string;
   selectedContractSymbol: string;
+  rr_selected_set_id: string;
+  rr_benchmark_asset_id: string;
+  rr_lookback_days: string;
+  rr_anchor_date: string;
+  rr_missing_mode: 'skip' | 'ffill';
+  rr_latest_point_size: string;
+  rr_other_point_size: string;
+  rr_included_asset_ids: string[] | null;
+  rr_panel_open: boolean;
+  rr_highlighted_asset_id: string;
+  rr_fixed_graph: boolean;
+  rr_fixed_bounds: string;
 };

@@ -24,6 +24,31 @@ def _sanitize_name(value: str, fallback: str = "set") -> str:
     return cleaned or fallback
 
 
+def _split_duplicate_suffix(name: str) -> tuple[str, int | None]:
+    match = re.fullmatch(r"(.*?)(?:\s*\((\d+)\))?", name.strip())
+    if not match:
+        return name.strip(), None
+    base = match.group(1).strip() or name.strip()
+    suffix = match.group(2)
+    return base, int(suffix) if suffix is not None else None
+
+
+def _unique_set_name(base_name: str, store: dict, exclude_id: str | None = None) -> str:
+    base, suffix = _split_duplicate_suffix(base_name)
+    existing = {str(item.get("name", "")).strip().lower() for item in store.get("sets", []) if str(item.get("id")) != str(exclude_id or "")}
+    candidate = base
+    if candidate.lower() not in existing:
+        return candidate
+
+    start = (suffix + 1) if suffix is not None else 1
+    index = start
+    while True:
+        candidate = f"{base} ({index})"
+        if candidate.lower() not in existing:
+            return candidate
+        index += 1
+
+
 def _sanitize_file_name(value: str, fallback: str = "asset") -> str:
     cleaned = re.sub(r"[^A-Za-z0-9._! -]+", "_", value.strip()).strip(" ._")
     return cleaned or fallback
@@ -120,6 +145,7 @@ def _normalize_set(item: dict, existing: dict | None = None) -> dict:
     name = str(item.get("name") or existing.get("name") or "").strip()
     interval = str(item.get("interval") or existing.get("interval") or "Daily").strip() or "Daily"
     bars = str(item.get("bars") or existing.get("bars") or settings.get("bars") or "5000").strip() or "5000"
+    benchmark_asset_id = str(item.get("benchmark_asset_id") or existing.get("benchmark_asset_id") or "").strip()
     assets = item.get("assets") or existing.get("assets") or []
     existing_assets = existing.get("assets") or []
     normalized_assets = []
@@ -128,16 +154,52 @@ def _normalize_set(item: dict, existing: dict | None = None) -> dict:
         normalized_assets.append(_normalize_asset(asset, existing_asset))
     folder_name = str(item.get("folder_name") or existing.get("folder_name") or _sanitize_name(name)).strip()
 
+    valid_asset_ids = {asset["id"] for asset in normalized_assets}
+    if not benchmark_asset_id or benchmark_asset_id not in valid_asset_ids:
+        benchmark_asset_id = normalized_assets[0]["id"] if normalized_assets else ""
+
     return {
         "id": set_id,
         "name": name,
         "interval": interval,
         "bars": bars,
+        "benchmark_asset_id": benchmark_asset_id,
         "folder_name": folder_name,
         "assets": normalized_assets,
         "updated_at": _now(),
         "created_at": existing.get("created_at") or _now(),
     }
+
+
+def duplicate_set(set_id: str) -> dict:
+    store = _load_store()
+    index = _find_set_index(store, set_id)
+    source = store["sets"][index]
+    clone_assets = []
+    asset_id_map: dict[str, str] = {}
+    for asset in source.get("assets", []):
+        cloned = dict(asset)
+        old_id = str(cloned.get("id") or "")
+        new_id = str(uuid.uuid4())
+        cloned["id"] = new_id
+        asset_id_map[old_id] = new_id
+        clone_assets.append(cloned)
+
+    new_name = _unique_set_name(str(source.get("name") or "set"), store)
+    duplicated = _normalize_set(
+        {
+            "name": new_name,
+            "interval": source.get("interval") or "Daily",
+            "bars": source.get("bars") or "5000",
+            "benchmark_asset_id": asset_id_map.get(str(source.get("benchmark_asset_id") or ""), ""),
+            "assets": clone_assets,
+        }
+    )
+
+    store["sets"].append(duplicated)
+    _save_store(store)
+    emit_terminal_line("INFO", "sets", f"duplicated set source={source.get('name')!r} name={duplicated['name']!r} assets={len(duplicated['assets'])}")
+    return duplicated
 
 
 def list_sets() -> list[dict]:
@@ -258,6 +320,7 @@ def _sync_assets(record: dict, action: str, asset_ids: set[str] | None = None) -
 
     updated_record = dict(record)
     updated_record["bars"] = str(record.get("bars") or settings.get("bars") or "5000").strip() or "5000"
+    updated_record["benchmark_asset_id"] = str(record.get("benchmark_asset_id") or "").strip()
     updated_record["assets"] = updated_assets
     updated_record["updated_at"] = sync_time
     _save_set_record(updated_record)

@@ -371,8 +371,11 @@ class DownloaderApp(tk.Tk):
         contract_symbol = self.contract_var.get().strip()
         exchange = self.selected_source_exchange.strip()
 
+        if not base_symbol and not contract_symbol:
+            raise ValueError("Symbol is required")
+
         if not contract_symbol:
-            raise ValueError("Select a futures contract first")
+            return base_symbol, exchange, None
 
         if base_symbol and contract_symbol.startswith(base_symbol) and contract_symbol.endswith("!"):
             match = re.fullmatch(rf"{re.escape(base_symbol)}(\d+)!", contract_symbol)

@@ -1,4 +1,4 @@
-import type { ApiMeta, AppSettings, DataSet, LogEntry, ResolveResponse, SearchResult, SetAsset, SetSyncResult } from './types';
+import type { ApiMeta, AppSettings, DataSet, LogEntry, ResolveResponse, RrResponse, SearchResult, SetAsset, SetSyncResult } from './types';
 import { open } from '@tauri-apps/plugin-dialog';
 
 const baseUrl = 'http://127.0.0.1:8765';
@@ -87,6 +87,9 @@ export const api = {
   deleteSet(id: string) {
     return json<{ ok: boolean }>(`/api/sets/${id}`, { method: 'DELETE' });
   },
+  duplicateSet(id: string) {
+    return json<{ set: DataSet }>(`/api/sets/${id}/duplicate`, { method: 'POST' });
+  },
   downloadSet(id: string) {
     return json<SetSyncResult>(`/api/sets/${id}/download`, { method: 'POST' });
   },
@@ -104,6 +107,18 @@ export const api = {
   },
   clearLogs() {
     return json<{ ok: boolean }>('/api/logs', { method: 'DELETE' });
+  },
+  createRrg(setId: string, options?: { benchmarkAssetId?: string; lookbackDays?: number; includedAssetIds?: string[]; missingMode?: 'skip' | 'ffill' }) {
+    return json<RrResponse>('/api/rrg', {
+      method: 'POST',
+      body: JSON.stringify({
+        set_id: setId,
+        benchmark_asset_id: options?.benchmarkAssetId || '',
+        lookback_days: options?.lookbackDays || 10,
+        included_asset_ids: options?.includedAssetIds || [],
+        missing_mode: options?.missingMode || 'skip',
+      }),
+    });
   },
   async pickFolder() {
     const result = await open({ directory: true, multiple: false, title: 'Select save folder' });

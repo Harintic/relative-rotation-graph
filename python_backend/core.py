@@ -136,8 +136,11 @@ def resolve_download_symbol(
     contract_symbol = contract_symbol.strip()
     source_exchange = source_exchange.strip()
 
+    if not base_symbol and not contract_symbol:
+        raise ValueError("Symbol is required")
+
     if not contract_symbol:
-        raise ValueError("Select a futures contract first")
+        return base_symbol, source_exchange, None
 
     if base_symbol and contract_symbol.startswith(base_symbol) and contract_symbol.endswith("!"):
         match = re.fullmatch(rf"{re.escape(base_symbol)}(\d+)!", contract_symbol)
