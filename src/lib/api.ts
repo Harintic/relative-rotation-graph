@@ -1,4 +1,4 @@
-import type { AppSettings, ResolveResponse, SearchResult } from './types';
+import type { ApiMeta, AppSettings, DataSet, LogEntry, ResolveResponse, SearchResult, SetAsset, SetSyncResult } from './types';
 import { open } from '@tauri-apps/plugin-dialog';
 
 const baseUrl = 'http://127.0.0.1:8765';
@@ -9,7 +9,19 @@ async function json<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   });
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+    let message = `Request failed: ${response.status}`;
+    try {
+      const payload = (await response.json()) as { error?: string };
+      message = payload.error || message;
+    } catch {
+      try {
+        const text = await response.text();
+        if (text) message = text;
+      } catch {
+        // keep default message
+      }
+    }
+    throw new Error(message);
   }
   return response.json() as Promise<T>;
 }
@@ -17,6 +29,9 @@ async function json<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   loadSettings() {
     return json<Partial<AppSettings>>('/api/settings');
+  },
+  meta() {
+    return json<ApiMeta>('/api/meta');
   },
   saveSettings(settings: AppSettings) {
     return json<{ ok: boolean }>('/api/settings', { method: 'POST', body: JSON.stringify(settings) });
@@ -53,6 +68,42 @@ export const api = {
         output_mode: settings.outputMode,
       }),
     });
+  },
+  listSets() {
+    return json<{ sets: DataSet[] }>('/api/sets');
+  },
+  createSet(value: { name: string; interval: string; bars: string; assets: SetAsset[] }) {
+    return json<{ set: DataSet }>('/api/sets', {
+      method: 'POST',
+      body: JSON.stringify(value),
+    });
+  },
+  updateSet(id: string, value: { name: string; interval: string; bars: string; assets: SetAsset[] }) {
+    return json<{ set: DataSet }>(`/api/sets/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(value),
+    });
+  },
+  deleteSet(id: string) {
+    return json<{ ok: boolean }>(`/api/sets/${id}`, { method: 'DELETE' });
+  },
+  downloadSet(id: string) {
+    return json<SetSyncResult>(`/api/sets/${id}/download`, { method: 'POST' });
+  },
+  updateSetData(id: string) {
+    return json<SetSyncResult>(`/api/sets/${id}/update`, { method: 'POST' });
+  },
+  retryFailedSet(id: string, assetIds?: string[]) {
+    return json<SetSyncResult>(`/api/sets/${id}/retry-failed`, {
+      method: 'POST',
+      body: JSON.stringify({ asset_ids: assetIds || [] }),
+    });
+  },
+  logs(since = 0, limit = 500) {
+    return json<{ logs: LogEntry[]; next_id: number }>(`/api/logs?since=${since}&limit=${limit}`);
+  },
+  clearLogs() {
+    return json<{ ok: boolean }>('/api/logs', { method: 'DELETE' });
   },
   async pickFolder() {
     const result = await open({ directory: true, multiple: false, title: 'Select save folder' });

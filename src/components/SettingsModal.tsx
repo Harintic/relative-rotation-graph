@@ -16,6 +16,13 @@ export function SettingsModal({ value, onClose, onSave }: Props) {
       <div className="modal">
         <h2>Settings</h2>
         <label>
+          Theme
+          <select value={draft.theme} onChange={(e) => setDraft({ ...draft, theme: e.target.value as AppSettings['theme'] })}>
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </select>
+        </label>
+        <label>
           Output mode
           <select value={draft.outputMode} onChange={(e) => setDraft({ ...draft, outputMode: e.target.value as AppSettings['outputMode'] })}>
             <option value="browser">Browser download only</option>

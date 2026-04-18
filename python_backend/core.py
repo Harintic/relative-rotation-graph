@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from python_backend.log_bus import emit_terminal_line
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 TVDATAFEED_DIR = BASE_DIR / "tvdatafeed"
@@ -57,12 +59,14 @@ class DownloadRequest:
     contract_symbol: str = ""
     base_symbol: str = ""
     save_folder: str = ""
+    save_file: str = ""
     output_mode: str = "browser"
 
 
 def search_symbols(query: str, exchange: str = "") -> list[dict]:
     if TvDatafeed is None:
         raise RuntimeError(f"tvDatafeed is unavailable: {_tvdatafeed_import_error}")
+    emit_terminal_line("DEBUG", "search", f"query={query!r} exchange={exchange!r}")
     tv = TvDatafeed()
     return tv.search_symbol(query, exchange) or []
 
@@ -160,10 +164,22 @@ def download_history(request: DownloadRequest) -> dict:
     if request.interval not in intervals:
         raise ValueError(f"Unsupported interval: {request.interval}")
 
+    emit_terminal_line(
+        "INFO",
+        "download",
+        f"start symbol={request.symbol!r} exchange={request.exchange!r} interval={request.interval!r} bars={request.bars}",
+    )
+
     symbol, exchange, fut_contract = resolve_download_symbol(
         request.base_symbol or request.symbol,
         request.exchange,
         request.contract_symbol,
+    )
+
+    emit_terminal_line(
+        "DEBUG",
+        "download",
+        f"resolved symbol={symbol!r} exchange={exchange!r} fut_contract={fut_contract}",
     )
 
     interval = intervals[request.interval]
@@ -176,6 +192,7 @@ def download_history(request: DownloadRequest) -> dict:
         fut_contract=fut_contract,
     )
     if data is None or data.empty:
+        emit_terminal_line("WARN", "download", f"no data for {exchange}:{symbol}")
         raise RuntimeError(f"No data returned for {exchange}:{symbol}")
 
     frame = data.reset_index().rename(columns={"index": "datetime"})
@@ -191,10 +208,16 @@ def download_history(request: DownloadRequest) -> dict:
     csv_text = buffer.getvalue()
     saved_path = ""
     if request.output_mode in {"folder", "both"}:
-        output_path = build_output_path(request.save_folder or BASE_DIR / "Output", request.symbol, request.contract_symbol)
+        if request.save_file:
+            output_path = Path(request.save_file)
+        else:
+            output_path = build_output_path(request.save_folder or BASE_DIR / "Output", request.symbol, request.contract_symbol)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(csv_text, encoding="utf-8")
         saved_path = str(output_path)
+        emit_terminal_line("INFO", "download", f"saved rows={len(frame)} path={saved_path}")
+    else:
+        emit_terminal_line("INFO", "download", f"completed rows={len(frame)} browser_output=True")
 
     return {
         "symbol": request.symbol,

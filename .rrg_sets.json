@@ -1,0 +1,167 @@
+{
+  "sets": [
+    {
+      "id": "2ab69a92-24d8-4f7d-ad29-3da878d515f0",
+      "name": "Currencies",
+      "interval": "Daily",
+      "bars": "500000",
+      "folder_name": "Currencies",
+      "assets": [
+        {
+          "id": "7f24bc05-3e04-468e-8e23-540da61f4ecb",
+          "search": "6",
+          "exchange": "CME",
+          "symbol": "6E",
+          "selectedSourceExchange": "CME",
+          "selectedBaseSymbol": "6E",
+          "selectedContractSymbol": "6E1!",
+          "file_name": "6E1!.csv",
+          "last_updated": "2026-04-18T09:48:43.190195+00:00",
+          "available_bars": 6476
+        },
+        {
+          "id": "548dfeba-74a2-4619-8526-c049e431093b",
+          "search": "6",
+          "exchange": "CME",
+          "symbol": "6B",
+          "selectedSourceExchange": "CME",
+          "selectedBaseSymbol": "6B",
+          "selectedContractSymbol": "6B1!",
+          "file_name": "6B1!.csv",
+          "last_updated": "2026-04-18T09:49:04.418120+00:00",
+          "available_bars": 6390
+        },
+        {
+          "id": "550ba7a9-7ade-41df-b3ac-6eba5301a7ec",
+          "search": "6",
+          "exchange": "CME",
+          "symbol": "6J",
+          "selectedSourceExchange": "CME",
+          "selectedBaseSymbol": "6J",
+          "selectedContractSymbol": "6J1!",
+          "file_name": "6J1!.csv",
+          "last_updated": "2026-04-18T09:48:43.190195+00:00",
+          "available_bars": 6398
+        },
+        {
+          "id": "ea4bd8be-1568-46fa-935b-388f8123ec9a",
+          "search": "6",
+          "exchange": "CME",
+          "symbol": "6A",
+          "selectedSourceExchange": "CME",
+          "selectedBaseSymbol": "6A",
+          "selectedContractSymbol": "6A1!",
+          "file_name": "6A1!.csv",
+          "last_updated": "2026-04-18T09:48:43.190195+00:00",
+          "available_bars": 6378
+        },
+        {
+          "id": "d81f64c9-7b22-43d3-abff-a58975b9152a",
+          "search": "6",
+          "exchange": "CME",
+          "symbol": "6S",
+          "selectedSourceExchange": "CME",
+          "selectedBaseSymbol": "6S",
+          "selectedContractSymbol": "6S1!",
+          "file_name": "6S1!.csv",
+          "last_updated": "2026-04-18T09:48:43.190195+00:00",
+          "available_bars": 6382
+        },
+        {
+          "id": "c30ddd87-b069-433d-a71b-2e39606ace29",
+          "search": "6",
+          "exchange": "CME",
+          "symbol": "6C",
+          "selectedSourceExchange": "CME",
+          "selectedBaseSymbol": "6C",
+          "selectedContractSymbol": "6C1!",
+          "file_name": "6C1!.csv",
+          "last_updated": "2026-04-18T09:48:43.190195+00:00",
+          "available_bars": 6496
+        },
+        {
+          "id": "cce42640-cd50-4f86-87cd-3bea4074fb74",
+          "search": "6",
+          "exchange": "CME",
+          "symbol": "6N",
+          "selectedSourceExchange": "CME",
+          "selectedBaseSymbol": "6N",
+          "selectedContractSymbol": "6N1!",
+          "file_name": "6N1!.csv",
+          "last_updated": "2026-04-18T09:48:43.190195+00:00",
+          "available_bars": 6368
+        },
+        {
+          "id": "ebe2382e-e7d8-4719-86a9-ace1fc65a2c7",
+          "search": "6",
+          "exchange": "CME",
+          "symbol": "6M",
+          "selectedSourceExchange": "CME",
+          "selectedBaseSymbol": "6M",
+          "selectedContractSymbol": "6M1!",
+          "file_name": "6M1!.csv",
+          "last_updated": "2026-04-18T09:48:43.190195+00:00",
+          "available_bars": 6269
+        },
+        {
+          "id": "0fb472bf-0b48-4ed9-8d3a-c67d999ff63f",
+          "search": "6",
+          "exchange": "CME",
+          "symbol": "6L",
+          "selectedSourceExchange": "CME",
+          "selectedBaseSymbol": "6L",
+          "selectedContractSymbol": "6L1!",
+          "file_name": "6L1!.csv",
+          "last_updated": "2026-04-18T09:48:43.190195+00:00",
+          "available_bars": 5667
+        },
+        {
+          "id": "c6da02c5-772b-45b6-93e4-e7452b7912d1",
+          "search": "6",
+          "exchange": "CME",
+          "symbol": "6Z",
+          "selectedSourceExchange": "CME",
+          "selectedBaseSymbol": "6Z",
+          "selectedContractSymbol": "6Z1!",
+          "file_name": "6Z1!.csv",
+          "last_updated": "2026-04-18T09:48:43.190195+00:00",
+          "available_bars": 6353
+        },
+        {
+          "id": "c0241e47-0e78-48e4-bd34-df9dfcb64b2d",
+          "search": "6",
+          "exchange": "CME",
+          "symbol": "6H",
+          "selectedSourceExchange": "CME",
+          "selectedBaseSymbol": "6H",
+          "selectedContractSymbol": "6H1!",
+          "file_name": "6H1!.csv",
+          "last_updated": "2026-04-18T09:48:43.190195+00:00",
+          "available_bars": 40
+        }
+      ],
+      "updated_at": "2026-04-18T09:49:04.418120+00:00",
+      "created_at": "2026-04-18T08:30:57.101798+00:00"
+    },
+    {
+      "id": "18f57bec-c143-4f25-8791-b2314d317293",
+      "name": "Indexes",
+      "interval": "Daily",
+      "folder_name": "Indexes",
+      "assets": [
+        {
+          "id": "2e7a6ba4-0899-437e-af2e-371bf49c1918",
+          "search": "DXY",
+          "exchange": "TVC",
+          "symbol": "DXY",
+          "selectedSourceExchange": "TVC",
+          "selectedBaseSymbol": "DXY",
+          "selectedContractSymbol": "",
+          "file_name": "DXY.csv"
+        }
+      ],
+      "updated_at": "2026-04-18T08:32:13.001267+00:00",
+      "created_at": "2026-04-18T08:32:13.001305+00:00"
+    }
+  ]
+}

@@ -15,6 +15,7 @@ def default_settings() -> dict:
         "symbol": "",
         "interval": "Daily",
         "bars": "5000",
+        "theme": "dark",
         "output_mode": "browser",
         "save_folder": str(BASE_DIR / "Output"),
         "username": "",
