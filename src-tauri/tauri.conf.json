@@ -1,0 +1,24 @@
+{
+  "productName": "Relative Rotation Graph",
+  "version": "0.1.0",
+  "identifier": "com.relative.rotation.graph",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build:bundle"
+  },
+  "bundle": {
+    "resources": ["resources/backend"]
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Relative Rotation Graph",
+        "width": 1200,
+        "height": 840,
+        "resizable": true
+      }
+    ]
+  }
+}

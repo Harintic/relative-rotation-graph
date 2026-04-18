@@ -1,0 +1,29 @@
+{
+  "name": "relative-rotation-graph-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:backend": "bash scripts/build-backend.sh",
+    "build:bundle": "npm run build:backend && npm run build",
+    "tauri": ". \"$HOME/.cargo/env\" && tauri",
+    "tauri:dev": ". \"$HOME/.cargo/env\" && tauri dev",
+    "tauri:build": ". \"$HOME/.cargo/env\" && tauri build"
+  },
+  "dependencies": {
+    "@tauri-apps/plugin-dialog": "^2.7.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/cli": "^2.10.1",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.0.2",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
+  }
+}

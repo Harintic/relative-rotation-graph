@@ -1,5 +1,13 @@
 data/
+Output/
 __pycache__/
 .venv/
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/resources/backend/rrg-backend
+.pyinstaller-work/
+.pyinstaller-spec/
 .gui_settings.json
+.rrg_settings.json
 Output.csv
