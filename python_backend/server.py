@@ -180,6 +180,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 lookback_days = int(payload.get("lookback_days") or 10)
                 included_asset_ids = payload.get("included_asset_ids") or []
                 missing_mode = str(payload.get("missing_mode") or "skip").strip() or "skip"
+                formula = str(payload.get("formula") or "Default").strip() or "Default"
                 emit_terminal_line("INFO", "rrg", f"create request set_id={set_id}")
                 result = create_rrg(
                     set_id,
@@ -187,6 +188,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                     lookback_days=lookback_days,
                     included_asset_ids=included_asset_ids if isinstance(included_asset_ids, list) else None,
                     missing_mode=missing_mode,
+                    formula=formula,
                 )
                 _json_response(self, 200, result)
                 return

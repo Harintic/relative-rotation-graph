@@ -1,4 +1,4 @@
-import type { ApiMeta, AppSettings, DataSet, LogEntry, ResolveResponse, RrResponse, SearchResult, SetAsset, SetSyncResult } from './types';
+import type { ApiMeta, AppSettings, DataSet, LogEntry, ResolveResponse, RrCreateResponse, SearchResult, SetAsset, SetSyncResult } from './types';
 import { open } from '@tauri-apps/plugin-dialog';
 
 const baseUrl = 'http://127.0.0.1:8765';
@@ -108,8 +108,8 @@ export const api = {
   clearLogs() {
     return json<{ ok: boolean }>('/api/logs', { method: 'DELETE' });
   },
-  createRrg(setId: string, options?: { benchmarkAssetId?: string; lookbackDays?: number; includedAssetIds?: string[]; missingMode?: 'skip' | 'ffill' }) {
-    return json<RrResponse>('/api/rrg', {
+  createRrg(setId: string, options?: { benchmarkAssetId?: string; lookbackDays?: number; includedAssetIds?: string[]; missingMode?: 'skip' | 'ffill'; formula?: 'Default' | 'Jdk' }) {
+    return json<RrCreateResponse>('/api/rrg', {
       method: 'POST',
       body: JSON.stringify({
         set_id: setId,
@@ -117,6 +117,7 @@ export const api = {
         lookback_days: options?.lookbackDays || 10,
         included_asset_ids: options?.includedAssetIds || [],
         missing_mode: options?.missingMode || 'skip',
+        formula: options?.formula || 'Default',
       }),
     });
   },

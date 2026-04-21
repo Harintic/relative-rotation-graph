@@ -45,6 +45,7 @@ const defaultSettings: AppSettings = {
   rr_lookback_days: '10',
   rr_anchor_date: '',
   rr_missing_mode: 'skip',
+  rr_formula: 'Default',
   rr_latest_point_size: '6',
   rr_other_point_size: '3',
   rr_included_asset_ids: null,
@@ -77,6 +78,7 @@ export default function App() {
   const [rrLookbackDays, setRrLookbackDays] = useState('10');
   const [rrAnchorDate, setRrAnchorDate] = useState('');
   const [rrMissingMode, setRrMissingMode] = useState<'skip' | 'ffill'>('skip');
+  const [rrFormula, setRrFormula] = useState<'Default' | 'Jdk'>('Default');
   const [rrLatestPointSize, setRrLatestPointSize] = useState('6');
   const [rrOtherPointSize, setRrOtherPointSize] = useState('3');
   const [rrIncludedAssetIds, setRrIncludedAssetIds] = useState<string[] | null>(null);
@@ -88,7 +90,7 @@ export default function App() {
   const [rrHighlightedAssetId, setRrHighlightedAssetId] = useState('');
   const [rrLoading, setRrLoading] = useState(false);
   const [rrStatus, setRrStatus] = useState('');
-  const [rrResult, setRrResult] = useState<RrResponse | null>(null);
+  const [rrResultsByFormula, setRrResultsByFormula] = useState<Partial<Record<'Default' | 'Jdk', RrResponse>>>({});
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [logsCursor, setLogsCursor] = useState(0);
   const [logsPaused, setLogsPaused] = useState(false);
@@ -166,6 +168,7 @@ export default function App() {
     setRrLookbackDays(settings.rr_lookback_days || '10');
     setRrAnchorDate(settings.rr_anchor_date || '');
     setRrMissingMode(settings.rr_missing_mode || 'skip');
+    setRrFormula((settings.rr_formula as 'Default' | 'Jdk') || 'Default');
     setRrLatestPointSize(settings.rr_latest_point_size || '6');
     setRrOtherPointSize(settings.rr_other_point_size || '3');
     setRrIncludedAssetIds(settings.rr_included_asset_ids ?? null);
@@ -179,6 +182,7 @@ export default function App() {
     settings.rr_lookback_days,
     settings.rr_anchor_date,
     settings.rr_missing_mode,
+    settings.rr_formula,
     settings.rr_latest_point_size,
     settings.rr_other_point_size,
     settings.rr_included_asset_ids,
@@ -229,7 +233,7 @@ export default function App() {
     if (rrSelectedSetId && !sets.some((item) => item.id === rrSelectedSetId)) {
       const fallbackSetId = sets[0]?.id ?? '';
       setRrSelectedSetId(fallbackSetId);
-      setRrResult(null);
+      setRrResultsByFormula({});
       setRrStatus('');
       setRrBenchmarkAssetId('');
       setRrAnchorDate('');
@@ -369,6 +373,7 @@ export default function App() {
     if (rrIncludedAssetIds === null) return [...validIds];
     return rrIncludedAssetIds.filter((id) => validIds.has(id) && id !== benchmarkId);
   }, [rrIncludedAssetIds, rrSelectedSet, rrBenchmarkAssetId]);
+  const rrResult = rrResultsByFormula[rrFormula] ?? null;
   const rrBenchmarkDateKeys = useMemo(() => rrResult?.benchmark_dates.map((date) => date.slice(0, 10)) ?? [], [rrResult]);
   const rrResolvedAnchorDate = useMemo(() => {
     if (!rrBenchmarkDateKeys.length) return '';
@@ -409,7 +414,10 @@ export default function App() {
         .filter((series) => series.tail.length > 0),
     };
   }, [rrResult, rrBenchmarkDateKeys, rrResolvedAnchorDate, rrIncludedAssetIds, rrPlottedAssetIds, rrLookbackDays]);
-  const rrChartSeriesIds = useMemo(() => rrResult?.series.map((series) => series.asset_id) ?? [], [rrResult]);
+  const rrChartSeriesIds = useMemo(
+    () => rrSelectedSet?.assets.map((asset) => asset.id).filter((id): id is string => Boolean(id)) ?? [],
+    [rrSelectedSet],
+  );
   const rrLegendAssets = useMemo(() => {
     const selected = rrSelectedSet?.assets ?? [];
     const benchmarkId = rrBenchmarkAssetId || rrSelectedSet?.benchmark_asset_id || rrSelectedSet?.assets[0]?.id || '';
@@ -732,13 +740,14 @@ export default function App() {
         lookbackDays: Number(rrLookbackDays) || 10,
         includedAssetIds: rrSelectedSet?.assets.map((asset) => asset.id).filter((id): id is string => Boolean(id)) ?? [],
         missingMode: rrMissingMode,
+        formula: rrFormula,
       });
-      setRrResult(response);
+      setRrResultsByFormula(response.formulas);
       setRrStatus(`Chart created for ${response.set.name}. Benchmark: ${response.benchmark_label}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Create failed';
       setRrStatus(`Create failed: ${message}`);
-      setRrResult(null);
+      setRrResultsByFormula({});
     } finally {
       setRrLoading(false);
     }
@@ -1139,6 +1148,7 @@ export default function App() {
                 <RrSidePanel
                   lookbackDays={rrLookbackDays}
                   missingMode={rrMissingMode}
+                  formula={rrFormula}
                   fixedGraph={rrFixedGraph}
                   onLookbackDaysChange={(value: string) => {
                     setRrLookbackDays(value);
@@ -1147,6 +1157,10 @@ export default function App() {
                   onMissingModeChange={(value: 'skip' | 'ffill') => {
                     setRrMissingMode(value);
                     updateRrSettings({ rr_missing_mode: value });
+                  }}
+                  onFormulaChange={(value: 'Default' | 'Jdk') => {
+                    setRrFormula(value);
+                    updateRrSettings({ rr_formula: value });
                   }}
                   latestPointSize={rrLatestPointSize}
                   otherPointSize={rrOtherPointSize}

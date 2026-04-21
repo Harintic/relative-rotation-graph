@@ -28,6 +28,7 @@ def default_settings() -> dict:
         "rr_lookback_days": "10",
         "rr_anchor_date": "",
         "rr_missing_mode": "skip",
+        "rr_formula": "Default",
         "rr_latest_point_size": "6",
         "rr_other_point_size": "3",
         "rr_included_asset_ids": None,

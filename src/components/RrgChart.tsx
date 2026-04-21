@@ -36,16 +36,27 @@ function colorFromIndex(index: number) {
   return `hsl(${hue.toFixed(1)} ${saturation}% ${lightness}%)`;
 }
 
+function colorFromAssetId(assetId: string, attempt = 0) {
+  let hash = 0;
+  for (let index = 0; index < assetId.length; index += 1) {
+    hash = (hash * 31 + assetId.charCodeAt(index)) >>> 0;
+  }
+  const hue = (hash + attempt * 53) % 360;
+  const saturation = 70;
+  const lightness = 48;
+  return `hsl(${hue.toFixed(1)} ${saturation}% ${lightness}%)`;
+}
+
 function buildColorMap(ids: string[]) {
   const sorted = [...new Set(ids)].sort((left, right) => left.localeCompare(right));
   const map = new Map<string, string>();
   const used = new Set<string>();
 
-  sorted.forEach((assetId, index) => {
+  sorted.forEach((assetId) => {
     let attempt = 0;
     let color = '';
     do {
-      color = colorFromIndex(index + attempt * sorted.length);
+      color = colorFromAssetId(assetId, attempt);
       attempt += 1;
     } while (used.has(color) && attempt < 128);
     used.add(color);
@@ -56,11 +67,7 @@ function buildColorMap(ids: string[]) {
 }
 
 function fallbackColor(assetId: string) {
-  let hash = 0;
-  for (let index = 0; index < assetId.length; index += 1) {
-    hash = (hash * 33 + assetId.charCodeAt(index)) >>> 0;
-  }
-  return colorFromIndex(hash % 512);
+  return colorFromAssetId(assetId);
 }
 
 export function RrgChart({

@@ -85,6 +85,8 @@ export type RrPoint = {
   y: number;
 };
 
+export type RrFormulaName = 'Default' | 'Jdk';
+
 export type RrSeries = {
   asset_id: string;
   symbol: string;
@@ -100,9 +102,22 @@ export type RrResponse = {
   lookback_days: number;
   interval: string;
   missing_mode: 'skip' | 'ffill';
+  formula: RrFormulaName;
   benchmark_dates: string[];
   included_asset_ids: string[];
   series: RrSeries[];
+};
+
+export type RrCreateResponse = {
+  set: DataSet;
+  benchmark_asset_id: string;
+  benchmark_label: string;
+  lookback_days: number;
+  interval: string;
+  missing_mode: 'skip' | 'ffill';
+  benchmark_dates: string[];
+  included_asset_ids: string[];
+  formulas: Record<RrFormulaName, RrResponse>;
 };
 
 export type AppSettings = {
@@ -124,6 +139,7 @@ export type AppSettings = {
   rr_lookback_days: string;
   rr_anchor_date: string;
   rr_missing_mode: 'skip' | 'ffill';
+  rr_formula: 'Default' | 'Jdk';
   rr_latest_point_size: string;
   rr_other_point_size: string;
   rr_included_asset_ids: string[] | null;

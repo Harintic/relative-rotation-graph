@@ -69,12 +69,107 @@ def _align_ffill(benchmark_frame: pd.DataFrame, asset_frame: pd.DataFrame) -> pd
     return aligned.dropna(subset=["asset_close"]).reset_index()
 
 
+def _ema(series: pd.Series, span: int) -> pd.Series:
+    return series.ewm(span=span, adjust=False, min_periods=1).mean()
+
+
+def _calc_default(aligned: pd.DataFrame, smooth_window: int) -> pd.DataFrame:
+    ratio = aligned["asset_close"] / aligned["benchmark_close"]
+    rs_ratio = (ratio / ratio.rolling(window=smooth_window, min_periods=1).mean()) * 100
+    rs_momentum = (rs_ratio / rs_ratio.rolling(window=smooth_window, min_periods=1).mean()) * 100
+    return aligned.assign(rs_ratio=rs_ratio, rs_momentum=rs_momentum).dropna(subset=["rs_ratio", "rs_momentum"])
+
+
+def _calc_jdk(aligned: pd.DataFrame) -> pd.DataFrame:
+    rs = aligned["asset_close"] / aligned["benchmark_close"]
+    rs_smooth = _ema(rs, 10)
+    rs_ratio = 100 * (rs_smooth / _ema(rs_smooth, 10))
+    rs_momentum = 100 * _ema(rs_ratio / rs_ratio.shift(5), 10)
+    return aligned.assign(rs_ratio=rs_ratio, rs_momentum=rs_momentum).dropna(subset=["rs_ratio", "rs_momentum"])
+
+
+def _build_rrg_result(
+    record: dict,
+    folder: Path,
+    benchmark: dict,
+    benchmark_id: str,
+    benchmark_frame: pd.DataFrame,
+    benchmark_window: pd.DataFrame,
+    benchmark_dates: list[str],
+    included_ids: set[str],
+    missing_mode: str,
+    lookback_days: int,
+    formula: str,
+) -> dict:
+    smooth_window = min(10, max(1, len(benchmark_frame)))
+    benchmark_label = str(benchmark.get("symbol") or benchmark.get("selectedBaseSymbol") or benchmark.get("selectedContractSymbol") or "")
+    series: list[dict] = []
+
+    for asset in record.get("assets", []):
+        asset_id = str(asset.get("id") or "")
+        if asset_id == benchmark_id or asset_id not in included_ids:
+            continue
+
+        try:
+            asset_path = _resolve_csv_path(folder, asset)
+            asset_frame = _load_asset_frame(asset_path)
+        except Exception as exc:
+            emit_terminal_line("WARN", "rrg", f"skip {asset.get('symbol') or asset_id}: {exc}")
+            continue
+
+        aligned = _align_skip(benchmark_frame, asset_frame) if missing_mode == "skip" else _align_ffill(benchmark_frame, asset_frame)
+        if aligned.empty:
+            emit_terminal_line("WARN", "rrg", f"skip {asset.get('symbol') or asset_id}: no overlap with benchmark")
+            continue
+
+        aligned = _calc_jdk(aligned) if formula == "Jdk" else _calc_default(aligned, smooth_window)
+        if aligned.empty:
+            continue
+
+        points = [
+            RrgPoint(date=row.date_key.isoformat(), x=float(row.rs_ratio), y=float(row.rs_momentum))
+            for row in aligned.itertuples(index=False)
+        ]
+
+        series.append(
+            {
+                "asset_id": asset_id,
+                "symbol": str(asset.get("symbol") or asset.get("selectedBaseSymbol") or asset.get("selectedContractSymbol") or ""),
+                "exchange": str(asset.get("selectedSourceExchange") or asset.get("exchange") or ""),
+                "latest": points[-1].__dict__ if points else None,
+                "tail": [point.__dict__ for point in points],
+            }
+        )
+
+    if not series:
+        raise RuntimeError("No chart data could be generated for this set")
+
+    emit_terminal_line(
+        "INFO",
+        "rrg",
+        f"created rr chart set={record.get('name')!r} series={len(series)} benchmark={benchmark_label!r} lookback={lookback_days} missing={missing_mode} formula={formula}",
+    )
+    return {
+        "set": record,
+        "benchmark_asset_id": benchmark_id,
+        "benchmark_label": benchmark_label,
+        "lookback_days": int(lookback_days or 10),
+        "interval": str(record.get("interval") or "Daily"),
+        "missing_mode": missing_mode,
+        "formula": formula,
+        "benchmark_dates": benchmark_dates,
+        "included_asset_ids": sorted(included_ids),
+        "series": series,
+    }
+
+
 def create_rrg(
     set_id: str,
     benchmark_asset_id: str | None = None,
     lookback_days: int = 10,
     included_asset_ids: list[str] | None = None,
     missing_mode: str = "skip",
+    formula: str = "Default",
 ) -> dict:
     record = get_set(set_id)
     assets = record.get("assets", [])
@@ -103,65 +198,35 @@ def create_rrg(
     included_ids.discard("")
 
     missing_mode = "ffill" if str(missing_mode).strip().lower() == "ffill" else "skip"
-    smooth_window = min(10, max(1, len(benchmark_frame)))
-    benchmark_label = str(benchmark.get("symbol") or benchmark.get("selectedBaseSymbol") or benchmark.get("selectedContractSymbol") or "")
-    series: list[dict] = []
+    formula = str(formula or "Default").strip() or "Default"
+    formula = formula if formula in {"Default", "Jdk"} else "Default"
 
-    for asset in assets:
-        asset_id = str(asset.get("id") or "")
-        if asset_id == benchmark_id or asset_id not in included_ids:
-            continue
-
-        try:
-            asset_path = _resolve_csv_path(folder, asset)
-            asset_frame = _load_asset_frame(asset_path)
-        except Exception as exc:
-            emit_terminal_line("WARN", "rrg", f"skip {asset.get('symbol') or asset_id}: {exc}")
-            continue
-
-        aligned = _align_skip(benchmark_frame, asset_frame) if missing_mode == "skip" else _align_ffill(benchmark_frame, asset_frame)
-        if aligned.empty:
-            emit_terminal_line("WARN", "rrg", f"skip {asset.get('symbol') or asset_id}: no overlap with benchmark")
-            continue
-
-        ratio = aligned["asset_close"] / aligned["benchmark_close"]
-        rs_ratio = (ratio / ratio.rolling(window=smooth_window, min_periods=1).mean()) * 100
-        rs_momentum = (rs_ratio / rs_ratio.rolling(window=smooth_window, min_periods=1).mean()) * 100
-        aligned = aligned.assign(rs_ratio=rs_ratio, rs_momentum=rs_momentum).dropna(subset=["rs_ratio", "rs_momentum"])
-        if aligned.empty:
-            continue
-
-        points = [
-            RrgPoint(date=row.date_key.isoformat(), x=float(row.rs_ratio), y=float(row.rs_momentum))
-            for row in aligned.itertuples(index=False)
-        ]
-
-        series.append(
-            {
-                "asset_id": asset_id,
-                "symbol": str(asset.get("symbol") or asset.get("selectedBaseSymbol") or asset.get("selectedContractSymbol") or ""),
-                "exchange": str(asset.get("selectedSourceExchange") or asset.get("exchange") or ""),
-                "latest": points[-1].__dict__ if points else None,
-                "tail": [point.__dict__ for point in points],
-            }
+    results = {
+        name: _build_rrg_result(
+            record,
+            folder,
+            benchmark,
+            benchmark_id,
+            benchmark_frame,
+            benchmark_window,
+            benchmark_dates,
+            included_ids,
+            missing_mode,
+            lookback_days,
+            name,
         )
+        for name in ("Default", "Jdk")
+    }
 
-    if not series:
-        raise RuntimeError("No chart data could be generated for this set")
-
-    emit_terminal_line(
-        "INFO",
-        "rrg",
-        f"created rr chart set={record.get('name')!r} series={len(series)} benchmark={benchmark_label!r} lookback={lookback_days} missing={missing_mode}",
-    )
     return {
         "set": record,
         "benchmark_asset_id": benchmark_id,
-        "benchmark_label": benchmark_label,
+        "benchmark_label": str(benchmark.get("symbol") or benchmark.get("selectedBaseSymbol") or benchmark.get("selectedContractSymbol") or ""),
         "lookback_days": int(lookback_days or 10),
         "interval": str(record.get("interval") or "Daily"),
         "missing_mode": missing_mode,
+        "formula": formula,
         "benchmark_dates": benchmark_dates,
         "included_asset_ids": sorted(included_ids),
-        "series": series,
+        "formulas": results,
     }
